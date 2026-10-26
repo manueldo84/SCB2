@@ -1,0 +1,49 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><title>Supply Chain Blockchain v2</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{--bg:#f6f7f9;--card:#fff;--tx:#1b1f24;--mu:#667;--ac:#0f766e;--bad:#b91c1c;--ok:#15803d;--wr:#b45309;--bd:#dde1e6}
+@media(prefers-color-scheme:dark){:root{--bg:#101418;--card:#1a2027;--tx:#e8ecf0;--mu:#93a0ad;--ac:#2dd4bf;--bad:#f87171;--ok:#4ade80;--wr:#fbbf24;--bd:#2c3540}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.5 system-ui,sans-serif}
+main{max-width:1050px;margin:0 auto;padding:20px 16px 48px}h1{font-size:22px;margin:0 0 4px}h2{font-size:16px;margin:0 0 10px}
+.s{color:var(--mu);margin:0 0 16px}.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.row{display:flex;gap:8px;flex-wrap:wrap}input,select,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid var(--bd);background:var(--bg);color:var(--tx)}
+input{flex:1;min-width:110px}button{background:var(--ac);color:#fff;border:0;font-weight:600;cursor:pointer}button.g{background:transparent;color:var(--tx);border:1px solid var(--bd)}button:disabled{opacity:.5}
+.nds{display:flex;gap:10px;flex-wrap:wrap}.nd{flex:1;min-width:220px;border:2px solid var(--ok);border-radius:10px;padding:10px;font-size:13px;cursor:pointer}
+.nd.warn{border-color:var(--wr)}.nd.bad{border-color:var(--bad)}.nd.sel{box-shadow:0 0 0 3px var(--ac)}
+#chain{display:flex;gap:10px;overflow-x:auto;padding-bottom:8px}.blk{min-width:200px;max-width:200px;border:2px solid var(--ok);border-radius:10px;padding:8px;font-size:12px}
+.blk.bad{border-color:var(--bad)}.al{color:var(--wr);font-weight:700}.h{font-family:ui-monospace,monospace;color:var(--mu)}
+table{width:100%;border-collapse:collapse}td,th{text-align:left;padding:6px 8px;border-bottom:1px solid var(--bd)}tbody tr{cursor:pointer}
+.tl{border-left:3px solid var(--ac);margin:10px 0 0 6px;padding-left:12px}.tl div{margin-bottom:8px}#err{color:var(--bad);margin-top:8px;font-weight:600}
+</style></head><body><main>
+<h1>⛓ Supply Chain Blockchain v2</h1><p class="s">Three nodes, ECDSA-signed events, role permissions, ordering rules, consensus healing and saved state.</p>
+<div class="card"><h2>1. Network (click a node to inspect it)</h2><div class="nds" id="nodes"></div>
+<div class="row" style="margin-top:10px"><button id="heal">Heal network from best valid chain</button><button class="g" id="reset">Reset everything</button></div></div>
+<div class="card"><h2>2. Record an event (the participant's key signs it; the chosen node mines and broadcasts it)</h2><div class="row">
+<select id="node"></select><select id="user"></select><select id="stage"></select>
+<input id="product" value="COFFEE-001" placeholder="Product ID"><input id="location" value="Wayanad, Kerala" placeholder="Location"><input id="temp" type="number" placeholder="Temp °C" style="max-width:110px">
+<button id="add">Sign &amp; mine</button></div><div id="err"></div></div>
+<div class="card"><h2>3. Chain on <span id="cname"></span></h2><div id="chain"></div>
+<div class="row" style="margin-top:8px"><span style="padding:8px 0">Attack: edit location of block</span><select id="bidx"></select><input id="tval" value="Fake Origin"><button class="g" id="tamper">Tamper on this node</button></div></div>
+<div class="card"><h2>4. Products (click a row to trace it)</h2><table><thead><tr><th>Product</th><th>Stage</th><th>Last handler</th><th>Events</th><th>Alerts</th><th>Status</th></tr></thead><tbody id="prods"></tbody></table><div id="out" class="tl"></div></div>
+<script>
+const $=id=>document.getElementById(id);let S=null,sel=0;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>"&#"+c.charCodeAt(0)+";");
+const api=async(u,m="GET",b)=>{const r=await fetch(u,{method:m,headers:{"Content-Type":"application/json"},body:b&&JSON.stringify(b)});const d=await r.json();if(!r.ok){$("err").textContent=d.error;throw 0}$("err").textContent="";return d};
+const run=async f=>{try{render(await f())}catch(e){}};
+function setStages(){$("stage").innerHTML=S.role_stages[S.users[$("user").value]].map(s=>`<option>${s}</option>`).join("")}
+function render(d){S=d;
+if(!$("user").options.length){$("user").innerHTML=Object.entries(d.users).map(([u,r])=>`<option value="${esc(u)}">${esc(u)} (${r})</option>`).join("");$("node").innerHTML=d.nodes.map((n,i)=>`<option value="${i}">Submit via ${n.name}</option>`).join("");setStages()}
+$("nodes").innerHTML=d.nodes.map((n,i)=>`<div class="nd ${n.valid?(n.agrees?"":"warn"):"bad"} ${i==sel?"sel":""}" onclick="sel=${i};render(S)"><b>${n.name}</b><br>${n.length} blocks · tip ${n.tip}…<br>${n.valid?(n.agrees?"✔ agrees with network":"⚠ out of sync"):"✘ INVALID at block #"+n.bad_index+": "+esc(n.reason)}</div>`).join("");
+const n=d.nodes[sel],ch=d.chains[sel];$("cname").textContent=n.name;
+$("chain").innerHTML=ch.map(b=>{const e=b.event,bad=n.bad_index!==null&&b.index>=n.bad_index;return `<div class="blk ${bad?"bad":""}"><b>#${b.index}</b> ${esc(e.stage)}<br>${esc(e.product||"")} · ${esc(e.user)}<br>${esc(e.location||"")}${e.temp!==undefined?" · "+e.temp+"°C":""}${e.temp>d.max_temp?'<div class="al">⚠ over limit</div>':""}<div class="h">${b.hash.slice(0,16)}…</div></div>`}).join("");
+$("bidx").innerHTML=ch.slice(1).map(b=>`<option>${b.index}</option>`).join("");$("tamper").disabled=ch.length<2;
+$("prods").innerHTML=d.products.length?d.products.map(p=>`<tr onclick="trace(decodeURIComponent('${encodeURIComponent(p.product)}'))"><td>${esc(p.product)}</td><td>${p.stage}</td><td>${esc(p.handler)}</td><td>${p.events}</td><td>${p.alerts?"⚠ "+p.alerts:"–"}</td><td>${p.done?"✔ delivered":"in transit"}</td></tr>`).join(""):"<tr><td colspan=6>No products yet</td></tr>"}
+async function trace(p){const r=await api("/api/trace/"+encodeURIComponent(p));
+$("out").innerHTML=r.length?r.map(b=>`<div><b>${b.stage}</b> — ${esc(b.user)}, ${esc(b.location)}${b.temp!==undefined?", "+b.temp+"°C":""}<br><small>block #${b.index} · ✔ confirmed by ${b.confirmations}/${b.nodes} nodes · signature verified</small></div>`).join(""):"<div>No verified records.</div>"}
+$("user").onchange=setStages;
+$("add").onclick=async()=>{$("add").disabled=true;$("add").textContent="Mining…";await run(()=>api("/api/event","POST",{node:$("node").value,user:$("user").value,stage:$("stage").value,product:$("product").value,location:$("location").value,temp:$("temp").value}));$("add").disabled=false;$("add").textContent="Sign & mine"};
+$("tamper").onclick=()=>confirm("This simulates an attacker editing data on "+S.nodes[sel].name+" only. Continue?")&&run(()=>api("/api/tamper","POST",{node:sel,index:$("bidx").value,field:"location",value:$("tval").value}));
+$("heal").onclick=()=>run(()=>api("/api/heal","POST"));
+$("reset").onclick=()=>{$("out").innerHTML="";run(()=>api("/api/reset","POST"))};
+api("/api/state").then(render);
+</script></main></body></html>
